@@ -1,6 +1,6 @@
 "use client"
 
-import { generatePrivateAndPublicKey, packPoint, elgamalEncryptPacked, elgamalDecryptEmbedded, compute_dlog, bigintToBytes32 } from "babyjubjub-utils";
+import { privateToPublicKey, compute_dlog } from "babyjubjub-utils";
 import { useState } from "react";
 
 export default function KeyGenerator() {
@@ -11,50 +11,57 @@ export default function KeyGenerator() {
 
   const [inputValue, setInputValue] = useState(''); // Initialize input value state
   const [result, setResult] = useState(null); // Initialize result state
+  const [logs, setLogs] = useState([]); // Initialize result state
 
-  const handleGenerate = async () => {
-    const generatedKeys = await generatePrivateAndPublicKey();
-    const privateKey = generatedKeys.privateKey;
-    const publicKey = await packPoint(generatedKeys.publicKey);
-    generatedKeys.publicKey = publicKey;
-    setKeys(generatedKeys);
+  const addLog = (log) => {
+    setLogs((prevLogs) => [...prevLogs, log]);
   };
 
-  const handleButtonClick = () => {
-    const processedResult = processInput(inputValue);
-    setResult(processedResult);
-  };
-
-  const processInput = async (value) => {
-    const { C1: encryptedValueC1, C2: encryptedValueC2 } = await elgamalEncryptPacked(keys.publicKey, Number(value));
-    const decryptedEmbedded = await elgamalDecryptEmbedded(keys.privateKey, encryptedValueC1, encryptedValueC2);
-    let result_ = await compute_dlog(decryptedEmbedded,8);
+  const processInput = async (value, threads = 8) => {
+    let v = BigInt(value);
+    const point = await privateToPublicKey(v);
+    const startTime = performance.now();
+    let result_ = await compute_dlog(point, threads);
+    const endTime = performance.now();
+    addLog(v.toString(2).length + ` bits ${threads} threads: ${Math.round(endTime - startTime)}ms`);
     return result_;
   };
 
+  const runBenchmarks = async () => {
+    let p = [0xc19139cb, 0xc4e72e131a];
+    addLog("_________");
+    addLog("8 threads");
+    addLog("---------");
+    for (let i = 0; i < 2; i++) {
+      await processInput(p[i] + 5, 8);
+    }
+
+    addLog("_________");
+    addLog("4 threads");
+    addLog("---------");
+    for (let i = 0; i < 2; i++) {
+      await processInput(p[i] + 2, 4);
+    }
+
+    addLog("________");
+    addLog("1 thread");
+    addLog("--------");
+    for (let i = 0; i < 2; i++) {
+      await processInput(p[i], 1);
+    }
+  }
+
+
   return (
-    <div>
-      {<button onClick={handleGenerate}>Generate New Keys</button>}
-          <p>
-            <strong>Private Key:</strong> {bigintToBytes32(keys.privateKey)}
-          </p>
-          <p>
-            <strong>Public Key:</strong> {bigintToBytes32(keys.publicKey)}
-          </p>
-      {keys.publicKey!==BigInt(0) && (<div>
-        <input
-          type="text"
-          value={inputValue}
-          onChange={(e) => setInputValue(e.target.value)}
-          placeholder="Enter text..."
-        />
-        <button onClick={handleButtonClick}>Encrypt then Decrypt</button>
-        {result && (
-          <p>
-            Result: <strong>{result}</strong>
-          </p>
-        )}
-      </div>)}
+    <div style={{ margin: '1em' }}>
+      <h3 style={{ marginBottom: '1em' }}>Benchmark Jat9292/babyjubjub-utils</h3>
+      {<button style={{ padding: '0.35em' }} onClick={runBenchmarks}>Run benchmarks</button>}
+
+      {logs.map((log, index) => (
+        <pre style={{ marginBottom: '.35em' }} key={index}>
+          {log}
+        </pre>
+      ))}
     </div>
   );
 }
